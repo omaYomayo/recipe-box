@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>レシピBox</title>
+<style>
+:root{--bg:#fbf7f2;--card:#fff;--tx:#2b2622;--sub:#8a7f75;--ac:#e0612b;--acx:#fff;--bd:#eadfd3;--ok:#3f9b5b;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171412;--card:#242019;--tx:#f3ece4;--sub:#a1968b;--bd:#3a332b}}
+:root[data-theme="dark"]{--bg:#171412;--card:#242019;--tx:#f3ece4;--sub:#a1968b;--bd:#3a332b}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:17px/1.6 -apple-system,"Hiragino Sans",system-ui,sans-serif}
+main{max-width:720px;margin:0 auto;padding:12px 16px 120px}
+h1{font-size:24px;margin:8px 0 12px}
+button{font:inherit;color:inherit;border:0;border-radius:14px;min-height:52px;padding:0 18px;background:var(--card);border:1px solid var(--bd)}
+button.p{background:var(--ac);color:var(--acx);border-color:var(--ac);font-weight:700}
+button.d{color:#d33}
+input,textarea{width:100%;font:inherit;font-size:17px;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;min-height:52px}
+textarea{min-height:140px;line-height:1.6}
+label{display:block;font-size:14px;color:var(--sub);margin:16px 0 6px}
+.card{display:block;width:100%;text-align:left;background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:14px 16px;margin:10px 0;min-height:64px}
+.card b{display:block;font-size:18px}.card small{color:var(--sub)}
+.bar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--bg);border-top:1px solid var(--bd)}
+.bar button{flex:1}
+.row{display:flex;gap:10px;margin:10px 0}.row>*{flex:1}
+ul.chk{list-style:none;padding:0;margin:0}
+.chk li,.st li{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px 16px;margin:8px 0}
+.chk li.on,.st li.on{opacity:.4;text-decoration:line-through}
+.chk li:before{content:"○ ";color:var(--sub)}.chk li.on:before{content:"✓ ";color:var(--ok)}
+.st{counter-reset:s;list-style:none;padding:0;margin:0}
+.st li{counter-increment:s}.st li:before{content:counter(s);display:inline-block;width:1.7em;height:1.7em;line-height:1.7em;text-align:center;border-radius:50%;background:var(--ac);color:var(--acx);font-size:.8em;margin-right:10px}
+h2{font-size:15px;color:var(--sub);margin:22px 0 4px}
+a{color:var(--ac)}
+.empty{text-align:center;color:var(--sub);margin-top:60px}
+.hint{font-size:13px;color:var(--sub);margin-top:6px}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+const KEY='recipebox:v1';
+let R=[],view='list',cur=null,q='',fs=19,wake=null;
+try{R=JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){R=[]}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(R))}catch(e){}};
+const $=s=>document.querySelector(s);
+const esc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const lines=s=>(s||'').split('\n').map(x=>x.trim()).filter(Boolean);
+const host=u=>{try{return new URL(u).hostname}catch(e){return ''}};
+
+function render(){
+ const a=$('#app');
+ if(view==='list'){
+  const f=R.filter(r=>(r.title+r.ingredients+r.memo).toLowerCase().includes(q.toLowerCase()));
+  a.innerHTML=`<h1>🍳 レシピBox</h1>
+  <input id="q" type="search" placeholder="レシピ・材料を検索" value="${esc(q)}">
+  ${f.length?f.map(r=>`<button class="card" data-o="${r.id}"><b>${esc(r.title)}</b><small>${esc(host(r.url))||'手入力'}</small></button>`).join(''):`<p class="empty">${R.length?'見つかりません':'まだレシピがありません<br>下の「＋ 追加」から始めましょう'}</p>`}
+  <div class="bar"><button class="p" id="add">＋ 追加</button></div>`;
+  $('#q').oninput=e=>{q=e.target.value;const p=e.target.selectionStart;render();const i=$('#q');i.focus();i.setSelectionRange(p,p)};
+  $('#add').onclick=()=>edit(null);
+  a.querySelectorAll('[data-o]').forEach(b=>b.onclick=()=>{cur=R.find(r=>r.id===b.dataset.o);view='show';render();scrollTo(0,0)});
+ }
+ else if(view==='show'){
+  const r=cur;
+  a.innerHTML=`<div class="row"><button id="bk">← 戻る</button><button id="ed">編集</button></div>
+  <h1 style="font-size:${fs+6}px">${esc(r.title)}</h1>
+  ${r.url?`<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(host(r.url))} で元を見る</a>`:''}
+  <div class="row"><button id="fm">A−</button><button id="fp">A＋</button><button id="wk">${wake?'画面ON中 ✓':'画面を消さない'}</button></div>
+  <div style="font-size:${fs}px">
+  <h2>材料</h2><ul class="chk">${lines(r.ingredients).map(x=>`<li>${esc(x)}</li>`).join('')||'<li>未入力</li>'}</ul>
+  <h2>作り方</h2><ol class="st">${lines(r.steps).map(x=>`<li>${esc(x)}</li>`).join('')||'<li>未入力</li>'}</ol>
+  ${r.memo?`<h2>メモ</h2><p>${esc(r.memo).replace(/\n/g,'<br>')}</p>`:''}</div>`;
+  $('#bk').onclick=()=>{rel();view='list';render()};
+  $('#ed').onclick=()=>edit(r);
+  $('#fm').onclick=()=>{fs=Math.max(15,fs-2);render()};
+  $('#fp').onclick=()=>{fs=Math.min(32,fs+2);render()};
+  $('#wk').onclick=async()=>{if(wake){rel()}else{try{wake=await navigator.wakeLock.request('screen')}catch(e){alert('この環境では利用できません')}}render()};
+  a.querySelectorAll('.chk li,.st li').forEach(l=>l.onclick=()=>l.classList.toggle('on'));
+ }
+}
+function rel(){try{wake&&wake.release()}catch(e){}wake=null}
+
+function edit(r,pre){
+ const x=r||pre||{};
+ view='edit';
+ $('#app').innerHTML=`<h1>${r?'レシピを編集':'レシピを追加'}</h1>
+ <label>レシピURL</label>
+ <input id="u" type="url" inputmode="url" placeholder="https://..." value="${esc(x.url)}">
+ <div class="row"><button id="pa">📋 貼り付け</button><button class="p" id="ft">🔍 自動入力</button></div><p class="hint" id="st"></p>
+ <label>タイトル</label><input id="t" value="${esc(x.title)}" placeholder="料理名">
+ <label>材料（1行に1つ）</label><textarea id="i">${esc(x.ingredients)}</textarea>
+ <label>作り方（1行に1手順）</label><textarea id="s">${esc(x.steps)}</textarea>
+ <label>メモ</label><textarea id="m" style="min-height:90px">${esc(x.memo)}</textarea>
+ <p class="hint">レシピ情報が埋め込まれたサイトなら自動入力できます。SNSなどは内容を手入力してください。</p>
+ ${r?'<div class="row"><button class="d" id="del">このレシピを削除</button></div>':''}
+ <div class="bar"><button id="cn">キャンセル</button><button class="p" id="sv">保存</button></div>`;
+ const back=()=>{view=r?'show':'list';render()};
+ $('#cn').onclick=back;
+ const ft=async()=>{const u=$('#u').value.trim();if(!u){$('#st').textContent='URLを入力してください';return}
+  $('#st').textContent='取得中…';$('#ft').disabled=true;
+  try{const d=await(await fetch('/api/recipe?url='+encodeURIComponent(u))).json();if(d.error)throw new Error(d.error);
+   $('#t').value=d.title||$('#t').value;if(d.ingredients)$('#i').value=d.ingredients;if(d.steps)$('#s').value=d.steps;if(d.memo&&!$('#m').value)$('#m').value=d.memo;
+   $('#st').textContent=d.structured?'✓ 取得しました。内容を確認してください':'レシピ情報が見つかりませんでした。タイトルのみ入力しました';
+  }catch(e){$('#st').textContent='⚠ '+e.message}$('#ft').disabled=false};
+ $('#ft').onclick=ft;
+ $('#pa').onclick=async()=>{try{const t=(await navigator.clipboard.readText()).trim();const m=t.match(/https?:\/\/\S+/);if(m){$('#u').value=m[0];ft()}}catch(e){alert('貼り付けできませんでした。手動で入力してください')}};
+ if(!r&&x.url&&!x.title)ft();
+ $('#sv').onclick=()=>{
+  const o={url:$('#u').value.trim(),title:$('#t').value.trim()||host($('#u').value)||'無題のレシピ',ingredients:$('#i').value,steps:$('#s').value,memo:$('#m').value};
+  if(r){Object.assign(r,o);cur=r}else{cur={id:Date.now().toString(36),...o};R.unshift(cur)}
+  save();view='show';render();scrollTo(0,0)};
+ if(r)$('#del').onclick=()=>{if(confirm('削除しますか？')){R=R.filter(z=>z!==r);save();rel();view='list';render()}};
+ scrollTo(0,0);
+}
+
+// 共有・ショートカットからの受け取り: ?url=...&title=...
+const P=new URLSearchParams(location.search);
+const su=P.get('url')||(P.get('text')||'').match(/https?:\/\/\S+/)?.[0];
+if(su)edit(null,{url:su,title:P.get('title')||''});else render();
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&wake===null&&view==='show'){}});
+</script>
+</body>
+</html>
