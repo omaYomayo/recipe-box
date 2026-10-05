@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="レシピBox">
+<meta name="theme-color" content="#e0612b">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-180.png">
 <title>レシピBox</title>
 <style>
 :root{--bg:#fbf7f2;--card:#fff;--tx:#2b2622;--sub:#8a7f75;--ac:#e0612b;--acx:#fff;--bd:#eadfd3;--ok:#3f9b5b;
@@ -89,6 +94,9 @@ function edit(r,pre){
  <label>レシピURL</label>
  <input id="u" type="url" inputmode="url" placeholder="https://..." value="${esc(x.url)}">
  <div class="row"><button id="pa">📋 貼り付け</button><button class="p" id="ft">🔍 自動入力</button></div><p class="hint" id="st"></p>
+ <details id="sn" style="margin-top:12px"><summary style="min-height:44px;line-height:44px">📝 SNSの文章から取り込む</summary>
+ <textarea id="tx" placeholder="投稿の文章をコピーして貼り付け"></textarea>
+ <div class="row"><button id="tp">📋 貼り付け</button><button class="p" id="tg">振り分ける</button></div></details>
  <label>タイトル</label><input id="t" value="${esc(x.title)}" placeholder="料理名">
  <label>材料（1行に1つ）</label><textarea id="i">${esc(x.ingredients)}</textarea>
  <label>作り方（1行に1手順）</label><textarea id="s">${esc(x.steps)}</textarea>
@@ -101,10 +109,14 @@ function edit(r,pre){
  const ft=async()=>{const u=$('#u').value.trim();if(!u){$('#st').textContent='URLを入力してください';return}
   $('#st').textContent='取得中…';$('#ft').disabled=true;
   try{const d=await(await fetch('/api/recipe?url='+encodeURIComponent(u))).json();if(d.error)throw new Error(d.error);
-   $('#t').value=d.title||$('#t').value;if(d.ingredients)$('#i').value=d.ingredients;if(d.steps)$('#s').value=d.steps;if(d.memo&&!$('#m').value)$('#m').value=d.memo;
-   $('#st').textContent=d.structured?'✓ 取得しました。内容を確認してください':'レシピ情報が見つかりませんでした。タイトルのみ入力しました';
+   if(d.title&&(d.structured||!$('#t').value))$('#t').value=d.title;if(d.ingredients)$('#i').value=d.ingredients;if(d.steps)$('#s').value=d.steps;if(d.memo&&!$('#m').value)$('#m').value=d.memo;
+   $('#st').textContent=d.structured?'✓ 取得しました。内容を確認してください':(($('#sn').open=true),'レシピ情報が見つかりませんでした。投稿の文章をコピーして、下の欄に貼り付けてください');
   }catch(e){$('#st').textContent='⚠ '+e.message}$('#ft').disabled=false};
  $('#ft').onclick=ft;
+ $('#tp').onclick=async()=>{try{$('#tx').value=await navigator.clipboard.readText()}catch(e){alert('貼り付けできませんでした。手動で貼り付けてください')}};
+ $('#tg').onclick=()=>{const d=parseSNS($('#tx').value);if(!d.ingredients&&!d.steps){$('#st').textContent='材料・手順を見つけられませんでした';return}
+  if(d.title&&!$('#t').value)$('#t').value=d.title;if(d.ingredients)$('#i').value=d.ingredients;if(d.steps)$('#s').value=d.steps;if(d.memo&&!$('#m').value)$('#m').value=d.memo;
+  $('#sn').open=false;$('#st').textContent='✓ 振り分けました。内容を確認してください'};
  $('#pa').onclick=async()=>{try{const t=(await navigator.clipboard.readText()).trim();const m=t.match(/https?:\/\/\S+/);if(m){$('#u').value=m[0];ft()}}catch(e){alert('貼り付けできませんでした。手動で入力してください')}};
  if(!r&&x.url&&!x.title)ft();
  $('#sv').onclick=()=>{
@@ -115,6 +127,28 @@ function edit(r,pre){
  scrollTo(0,0);
 }
 
+/*PARSE*/
+function parseSNS(t){
+ const Q=/(\d|[０-９]|適量|少々|ひとつまみ|お好み|大さじ|小さじ|カップ|cc|ml|g|kg|個|本|枚|片|袋|丁|束|パック|缶|玉|cm)/;
+ const P='[\\s【\\[<(（■□●○◆◇▼▽▶☆★◎♡♥✔✅📝🍳\\-ー]*';
+ const HI=new RegExp('^'+P+'(材料|ざいりょう|ingredients?)','i'),HS=new RegExp('^'+P+'(作り方|つくり方|手順|レシピ|how\\s*to|steps?|directions?)','i');
+ const clean=s=>s.replace(/^[\s・･•●○◆◇■□▪▫\-–—*＊※✓✔☑▶▷►]+/,'').trim();
+ const num=s=>s.replace(/^(?:[①-⑳❶-❿]|[0-9０-９]+[.．)）、:：]|STEP\s*\d+[:：]?)\s*/i,'').trim();
+ const rest=(r,H)=>r.replace(H,'').replace(/^[\s】\]>)）:：]*(?:[（(][^）)]*[）)])?[\s】\]>):：]*/,'').trim();
+ let mode=null,ing=[],st=[],other=[];
+ for(const raw of t.replace(/\r/g,'').split('\n').map(x=>x.trim())){
+  if(!raw||/^([#＃]\S+\s*)+$/.test(raw))continue;
+  if(raw.length<=30&&HI.test(raw)){mode='i';const r=rest(raw,HI);if(r&&!/^\d*[〜~-]?\d*\s*(人|個)?\s*(分|前)/.test(r))ing.push(clean(r));continue}
+  if(raw.length<=30&&HS.test(raw)){mode='s';const r=rest(raw,HS);if(r)st.push(num(clean(r)));continue}
+  if(raw.length<30&&/保存|フォロー|いいね|コメント|プロフィール/.test(raw))continue;
+  if(mode==='i')ing.push(clean(raw));else if(mode==='s')st.push(num(clean(raw)));else other.push(raw)}
+ let memo='';
+ if(!ing.length&&!st.length){for(const l of other.slice(1)){if(l.length<=20&&Q.test(l)&&!/[。！]|ます|ください|して|てから/.test(l))ing.push(clean(l));else if(l.length>=8)st.push(num(clean(l)))}}
+ else memo=other.slice(1).join('\n').slice(0,300);
+ const title=(other[0]||'').replace(/[#＃]\S+/g,'').trim().slice(0,40);
+ return{title,ingredients:ing.join('\n'),steps:st.join('\n'),memo}}
+/*END*/
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 // 共有・ショートカットからの受け取り: ?url=...&title=...
 const P=new URLSearchParams(location.search);
 const su=P.get('url')||(P.get('text')||'').match(/https?:\/\/\S+/)?.[0];
