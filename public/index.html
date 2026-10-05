@@ -39,6 +39,7 @@ ul.chk{list-style:none;padding:0;margin:0}
 .st li{counter-increment:s}.st li:before{content:counter(s);display:inline-block;width:1.7em;height:1.7em;line-height:1.7em;text-align:center;border-radius:50%;background:var(--ac);color:var(--acx);font-size:.8em;margin-right:10px}
 h2{font-size:15px;color:var(--sub);margin:22px 0 4px}
 a{color:var(--ac)}
+.btn{display:flex;align-items:center;justify-content:center;min-height:56px;margin:12px 0;border-radius:14px;background:var(--ac);color:var(--acx);font-weight:700;text-decoration:none}
 .empty{text-align:center;color:var(--sub);margin-top:60px}
 .hint{font-size:13px;color:var(--sub);margin-top:6px}
 </style>
@@ -53,6 +54,7 @@ const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(R))}catch(e){}};
 const $=s=>document.querySelector(s);
 const esc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const lines=s=>(s||'').split('\n').map(x=>x.trim()).filter(Boolean);
+const vid=u=>/(^|\.)(youtube\.com|youtu\.be|instagram\.com)$/.test(host(u));
 const host=u=>{try{return new URL(u).hostname}catch(e){return ''}};
 
 function render(){
@@ -61,7 +63,7 @@ function render(){
   const f=R.filter(r=>(r.title+r.ingredients+r.memo).toLowerCase().includes(q.toLowerCase()));
   a.innerHTML=`<h1>🍳 レシピBox</h1>
   <input id="q" type="search" placeholder="レシピ・材料を検索" value="${esc(q)}">
-  ${f.length?f.map(r=>`<button class="card" data-o="${r.id}"><b>${esc(r.title)}</b><small>${esc(host(r.url))||'手入力'}</small></button>`).join(''):`<p class="empty">${R.length?'見つかりません':'まだレシピがありません<br>下の「＋ 追加」から始めましょう'}</p>`}
+  ${f.length?f.map(r=>`<button class="card" data-o="${r.id}"><b>${esc(r.title)}</b><small>${vid(r.url)?'🎬 動画 · ':''}${esc(host(r.url))||'手入力'}</small></button>`).join(''):`<p class="empty">${R.length?'見つかりません':'まだレシピがありません<br>下の「＋ 追加」から始めましょう'}</p>`}
   <div class="bar"><button class="p" id="add">＋ 追加</button></div>`;
   $('#q').oninput=e=>{q=e.target.value;const p=e.target.selectionStart;render();const i=$('#q');i.focus();i.setSelectionRange(p,p)};
   $('#add').onclick=()=>edit(null);
@@ -71,7 +73,7 @@ function render(){
   const r=cur;
   a.innerHTML=`<div class="row"><button id="bk">← 戻る</button><button id="ed">編集</button></div>
   <h1 style="font-size:${fs+6}px">${esc(r.title)}</h1>
-  ${r.url?`<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(host(r.url))} で元を見る</a>`:''}
+  ${r.url?(vid(r.url)?`<a class="btn" href="${esc(r.url)}" target="_blank" rel="noopener">▶ 元の動画を見る</a>`:`<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(host(r.url))} で元を見る</a>`):''}
   <div class="row"><button id="fm">A−</button><button id="fp">A＋</button><button id="wk">${wake?'画面ON中 ✓':'画面を消さない'}</button></div>
   <div style="font-size:${fs}px">
   <h2>材料</h2><ul class="chk">${lines(r.ingredients).map(x=>`<li>${esc(x)}</li>`).join('')||'<li>未入力</li>'}</ul>
@@ -107,10 +109,11 @@ function edit(r,pre){
  const back=()=>{view=r?'show':'list';render()};
  $('#cn').onclick=back;
  const ft=async()=>{const u=$('#u').value.trim();if(!u){$('#st').textContent='URLを入力してください';return}
+  if(/(^|\.)instagram\.com$/.test(host(u))){$('#st').textContent='Instagramは自動取得できないため、URLだけ保存します。タイトルを入力してください';return}
   $('#st').textContent='取得中…';$('#ft').disabled=true;
   try{const d=await(await fetch('/api/recipe?url='+encodeURIComponent(u))).json();if(d.error)throw new Error(d.error);
    if(d.title&&(d.structured||!$('#t').value))$('#t').value=d.title;if(d.ingredients)$('#i').value=d.ingredients;if(d.steps)$('#s').value=d.steps;if(d.memo&&!$('#m').value)$('#m').value=d.memo;
-   $('#st').textContent=d.structured?'✓ 取得しました。内容を確認してください':(($('#sn').open=true),'レシピ情報が見つかりませんでした。投稿の文章をコピーして、下の欄に貼り付けてください');
+   $('#st').textContent=d.video?(($('#sn').open=true),'✓ 動画のタイトルを取得しました。材料・手順は、概要欄の文章を下に貼ると振り分けられます'):d.structured?'✓ 取得しました。内容を確認してください':(($('#sn').open=true),'レシピ情報が見つかりませんでした。投稿の文章をコピーして、下の欄に貼り付けてください');
   }catch(e){$('#st').textContent='⚠ '+e.message}$('#ft').disabled=false};
  $('#ft').onclick=ft;
  $('#tp').onclick=async()=>{try{$('#tx').value=await navigator.clipboard.readText()}catch(e){alert('貼り付けできませんでした。手動で貼り付けてください')}};
