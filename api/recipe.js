@@ -55,6 +55,13 @@ module.exports = async (req, res) => {
   let u;
   try { u = new URL(req.query.url); } catch (e) { return res.status(400).json({ error: 'URLが不正です' }); }
   if (blocked(u)) return res.status(400).json({ error: 'このURLは取得できません' });
+  if (/(^|\.)(youtube\.com|youtu\.be)$/.test(u.hostname)) {
+    try {
+      const o = await fetch('https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent(u.href), { signal: AbortSignal.timeout(6000) });
+      if (o.ok) { const j = await o.json();
+        return res.status(200).json({ title: j.title || '', ingredients: '', steps: '', memo: '', structured: false, video: true, source: u.href }); }
+    } catch (e) {}
+  }
   try {
     const r = await fetch(u, {
       redirect: 'follow', signal: AbortSignal.timeout(8000),
